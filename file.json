@@ -1,0 +1,34 @@
+{
+  "name": "ABC",
+  "images": 1,
+  "persons": 4,
+  "favourite": false,
+  "desc": "abcdeopjnFUWIERFPWJEGFHNOPICEIHWRPUGTIHWQRIEGT",
+  "images": [
+    "abc",
+    "abcd",
+    "abcde"
+  ],
+  "ingredients": [
+    {
+      "count": 9999,
+      "unit": "Gramm",
+      "name": "Mehl"
+    },
+    {
+      "count": 9999,
+      "unit": "Stück",
+      "name": "Eier"
+    }
+  ],
+  "steps": [
+    {
+      "position": 0,
+      "desc": "blablablabnlablablablqabla"
+    },
+    {
+      "position": 1,
+      "desc": "blablablabnlablablablqabla"
+    }
+  ]
+}
