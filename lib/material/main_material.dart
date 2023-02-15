@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:kochbuch/material/activies/classes/recipe_classes.dart';
 import 'package:kochbuch/material/activies/new_recipe.dart';
 import 'package:kochbuch/material/activies/view_recipe.dart';
+import 'package:line_icons/line_icon.dart';
 import 'package:line_icons/line_icons.dart';
 import 'package:kochbuch/material/activies/home.dart';
 import 'package:path_provider/path_provider.dart';
@@ -14,7 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../img/img.dart';
 
 class MaterialHomePage extends StatefulWidget {
-  const MaterialHomePage({super.key, required this.title});
+  const MaterialHomePage({super.key, required this.pageIndex});
 
   // This widget is the home page of your application. It is stateful, meaning
   // that it has a State object (defined below) that contains fields that affect
@@ -25,7 +27,7 @@ class MaterialHomePage extends StatefulWidget {
   // used by the build method of the State. Fields in a Widget subclass are
   // always marked "final".
 
-  final String title;
+  final int pageIndex;
 
   @override
   State<MaterialHomePage> createState() => _MaterialHomePageState();
@@ -43,7 +45,7 @@ class _MaterialHomePageState extends State<MaterialHomePage> {
         )
     );
     build(context);
-}
+  }
 
   Future<List<Recipe>> getRecipes() async {
     final prefs = await SharedPreferences.getInstance();
@@ -67,33 +69,36 @@ class _MaterialHomePageState extends State<MaterialHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder(
-      future: getRecipes(),
-      builder: (context, snapshot) {
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text("Mein Kochbuch"),
+    //currentPageIndex = widget.pageIndex;
+    return Scaffold(
+      appBar: AppBar(
+        title: currentPageIndex == 0
+            ? const Text("Mein Kochbuch")
+            : const Text("Meine Favouriten")
+      ),
+      bottomNavigationBar: NavigationBar(
+        onDestinationSelected: (int index) {
+          setState(() {
+            currentPageIndex = index;
+          });
+        },
+        selectedIndex: currentPageIndex,
+        destinations: const <Widget>[
+          NavigationDestination(
+            icon: Icon(LineIcons.utensils),
+            label: 'Rezepte',
           ),
-          bottomNavigationBar: NavigationBar(
-            onDestinationSelected: (int index) {
-              setState(() {
-                currentPageIndex = index;
-              });
-            },
-            selectedIndex: currentPageIndex,
-            destinations: const <Widget>[
-              NavigationDestination(
-                icon: Icon(LineIcons.utensils),
-                label: 'Rezepte',
-              ),
-              NavigationDestination(
-                icon: Icon(LineIcons.bookmark),
-                label: 'Favoriten',
-              ),
-            ],
+          NavigationDestination(
+            icon: Icon(LineIcons.bookmark),
+            label: 'Favoriten',
           ),
-          body: <Widget>[
-            Container(
+        ],
+      ),
+      body: <Widget>[
+        FutureBuilder(
+          future: getRecipes(),
+          builder: (context, snapshot) {
+            return Container(
                 alignment: Alignment.center,
                 child: GridView.builder(
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -109,7 +114,9 @@ class _MaterialHomePageState extends State<MaterialHomePage> {
                               AspectRatio(
                                 aspectRatio: 16 / 9,
                                 child: Image.memory(
-                                  snapshot.data?[index].images?.length != 0 ? base64Decode(snapshot.data![index].images![0]) : base64Decode(MyImage.image),
+                                  snapshot.data?[index].images?.length != 0
+                                      ? base64Decode(snapshot.data![index].images![0])
+                                      : base64Decode(MyImage.image),
                                   fit: BoxFit.cover,
                                 ),
                               ),
@@ -139,20 +146,71 @@ class _MaterialHomePageState extends State<MaterialHomePage> {
                     );
                   },
                 )
-            ),
-            Container(
-              //color: Colors.green,
-              alignment: Alignment.center,
-              child: const Text('Page 2'),
-            ),
-          ][currentPageIndex],
-          floatingActionButton: currentPageIndex == 0 ? FloatingActionButton.extended(
-            onPressed: _newRecipe,
-            icon: const Icon(Icons.add),
-            label: const Text("Neues Rezept"),
-          ) : null,
-        );
-      }
+            );
+          }
+        ),
+        FutureBuilder(
+          future: getRecipes(),
+          builder: (context, snapshot) {
+            return Container(
+                alignment: Alignment.center,
+                child: GridView.builder(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                  ),
+                  itemCount: snapshot.data != null ? snapshot.data?.length  : 0,
+                  itemBuilder: (context, index) {
+                    if (snapshot.data![index].favourite == false) return const SizedBox();
+
+                    return Card(
+                        clipBehavior: Clip.antiAliasWithSaveLayer,
+                        child: InkWell(
+                          child: Column(
+                            children: <Widget>[
+                              AspectRatio(
+                                aspectRatio: 16 / 9,
+                                child: Image.memory(
+                                  snapshot.data?[index].images?.length != 0
+                                      ? base64Decode(snapshot.data![index].images![0])
+                                      : base64Decode(MyImage.image),
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              Container(
+                                margin: const EdgeInsets.all(5),
+                                child: Center(
+                                  child: Text(snapshot.data![index].name!,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 3,
+                                  ),
+                                ),
+                              )
+                            ],
+                          ),
+                          onTap: () {
+                            Navigator.of(context).push(PageRouteBuilder(
+                                opaque: false,
+                                pageBuilder: (BuildContext context, _, __) =>
+                                    ViewRecipePage(recipe: snapshot.data![index])
+                            ));
+                          },
+                        )
+                    );
+                  },
+                )
+            );
+          }
+        ),
+      ][currentPageIndex],
+      floatingActionButton: currentPageIndex == 0 ? FloatingActionButton.extended(
+        onPressed: _newRecipe,
+        icon: const Icon(Icons.add),
+        label: const Text("Neues Rezept"),
+      ) : null,
     );
   }
 

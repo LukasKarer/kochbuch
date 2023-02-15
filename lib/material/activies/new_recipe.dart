@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:kochbuch/material/main_material.dart';
 import 'package:line_icons/line_icon.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
@@ -95,7 +96,15 @@ class _NewRecipePageState extends State<NewRecipePage> {
           actions: [
             TextButton(
               onPressed: () async {
-                if (await _saveRecipe()) Navigator.of(context).pop();
+                if (await _saveRecipe()) {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).pushReplacement(
+                    PageRouteBuilder(
+                    opaque: false,
+                    pageBuilder: (BuildContext context, _, __) =>
+                        const MaterialHomePage(pageIndex: 0)
+                  ));
+                }
               },
               child: const Text('Speichern'),
             )
@@ -174,7 +183,7 @@ class _NewRecipePageState extends State<NewRecipePage> {
                                 onPressed: () async {
                                   List<XFile?> imgs = await ImagePicker().pickMultiImage(requestFullMetadata: true);
                                   setState(() {
-                                    images.addAll(imgs);
+                                    if (imgs.isNotEmpty) images.addAll(imgs);
                                   });
                                 },
                                 child: LineIcon.image(),
@@ -184,7 +193,7 @@ class _NewRecipePageState extends State<NewRecipePage> {
                                   onPressed: () async {
                                     XFile? img = await ImagePicker().pickImage(source: ImageSource.camera, requestFullMetadata: true);
                                     setState(() {
-                                      images.add(img);
+                                      if (img != null) images.add(img);
                                     });
                                   },
                                   child: LineIcon.camera()

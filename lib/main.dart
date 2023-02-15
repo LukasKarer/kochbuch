@@ -30,7 +30,7 @@ class MyApp extends StatelessWidget {
           useMaterial3: true,
         ),
         themeMode: ThemeMode.system,
-        home: const MaterialHomePage(title: 'Flutter Demo Home Page'),
+        home: const MaterialHomePage(pageIndex: 0),
       );
     });
   }
