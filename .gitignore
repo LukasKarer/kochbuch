@@ -186,7 +186,6 @@ fabric.properties
 /web/
 /macos/
 /linux/
-/android/
 /ios/
 /.tmp.drivedownload/
 /.tmp.driveupload/
