@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:line_icons/line_icon.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../main_material.dart';
 import 'classes/recipe_classes.dart';
@@ -29,29 +30,38 @@ class ViewRecipePage extends StatefulWidget {
 }
 
 class _ViewRecipePageState extends State<ViewRecipePage> {
-  Recipe recipe = Recipe();
+  late Recipe recipe;
   List<Image> images = [];
   bool _showExtendedFabs = false;
   final _textController = TextEditingController();
+  final client = Supabase.instance.client;
+  Future<bool>? readImagesBool;
 
-  @override
-  void dispose() {
-    _textController.dispose();
-    super.dispose();
-  }
+  _readImages() async {
+    final user = client.auth.currentUser;
+    List<Image> cache = [];
 
-  _readImages() {
     if (recipe.images != null) {
-      for (int i = 0; i < recipe.images!.length; i++) {
-        images.add(Image.memory(base64Decode(recipe.images![i])));
+      for (int i = 0; i < recipe.images!; i++) {
+        final result = await client.storage
+            .from('images/${user!.id}/${recipe.id}')
+            .download('${recipe.name}$i.jpg');
+        cache.add(Image.memory(result));
       }
+      setState(() {
+        images.addAll(cache);
+      });
+      return true;
     }
   }
 
   void _deleteRecipe(Recipe recipe) {
+    final user = client.auth.currentUser;
+
     setState(() {
       _showExtendedFabs = !_showExtendedFabs;
     });
+
     showDialog(
         context: context,
         builder: (BuildContext context) {
@@ -60,7 +70,7 @@ class _ViewRecipePageState extends State<ViewRecipePage> {
             content: SingleChildScrollView(
               child: Column(
                 children: [
-                  const Text('Name des Rezepts eingeben, um es löschen zu können'),
+                  const Text('Name des Rezepts eingeben, um es zu löschen'),
                   TextField(
                     controller: _textController,
                     decoration: const InputDecoration(
@@ -74,22 +84,23 @@ class _ViewRecipePageState extends State<ViewRecipePage> {
               TextButton(
                 child: const Text('Löschen'),
                 onPressed: () async {
-                  final prefs = await SharedPreferences.getInstance();
-                  List<String>? recipes = prefs.getStringList('recipes');
-
                   if (_textController.text == recipe.name) {
-                    int oldIndex = recipes!.indexOf(jsonEncode(recipe.toJson()));
-                    if (oldIndex != -1) {
-                      recipes.removeAt(oldIndex);
-                    }
-                    await prefs.setStringList('recipes', recipes);
+                    final List<String> files = List<String>.generate(recipe.images!,
+                            (int index) => "${user!.id}/${recipe.id}/${recipe.name!}$index.jpg");
+                    await client.storage.from('images').remove(
+                        files
+                    );
+                    await client.from('recipes').delete().match({
+                      'recipe': jsonEncode(recipe.toJson()),
+                      'user_id': user!.id
+                    });
 
                     Navigator.of(context).popUntil((route) => route.isFirst == true);
                     Navigator.of(context).pushReplacement(
                         PageRouteBuilder(
                             opaque: false,
                             pageBuilder: (BuildContext context, _, __) =>
-                              const MaterialHomePage(pageIndex: 0)
+                              const MaterialHomePage(pageIndex: 0, reload: false)
                         ));
                   }
                 },
@@ -107,20 +118,20 @@ class _ViewRecipePageState extends State<ViewRecipePage> {
   }
 
   void _favorRecipe(Recipe recipe) async {
-    final prefs = await SharedPreferences.getInstance();
-    List<String>? recipes = prefs.getStringList('recipes');
-    int index = recipes!.indexOf(jsonEncode(recipe.toJson()));
+    final user = client.auth.currentUser;
 
-    if (index != -1) {
-      recipe.favourite = !recipe.favourite!;
-      recipes[index] = jsonEncode(recipe.toJson());
+    recipe.favourite = !recipe.favourite!;
 
-    }
-    await prefs.setStringList('recipes', recipes);
+    await client.from('recipes').update({
+      'recipe': jsonEncode(recipe.toJson()),
+      'user_id': user!.id
+    }).eq(
+      'recipe', jsonEncode(widget.recipe.toJson())
+    );
+
     setState(() {
       this.recipe = recipe;
     });
-    print("object");
   }
 
   bool _isRecipeFavourite(Recipe recipe) {
@@ -128,12 +139,26 @@ class _ViewRecipePageState extends State<ViewRecipePage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  void initState() {
     recipe = widget.recipe;
     _readImages();
-    return Scaffold(
-        appBar: AppBar(
-          /*actions: [
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder(
+      future: readImagesBool,
+      builder: (context, snapshot) {
+        return Scaffold(
+          appBar: AppBar(
+            /*actions: [
             TextButton(
               onPressed: () async {
                 //if (await _saveRecipe()) Navigator.of(context).pop();
@@ -141,179 +166,183 @@ class _ViewRecipePageState extends State<ViewRecipePage> {
               child: const Text('Speichern'),
             )
           ],*/
-        ),
-        body: Stack(
-          children: [
-            Container(
-                padding: const EdgeInsets.all(20.0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ListView(
-                        children: [
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 15),
-                            child: Text(
-                              recipe.name!,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                  fontSize: 30
+          ),
+          body: Stack(
+            children: [
+              Container(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ListView(
+                          children: [
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 15),
+                              child: Text(
+                                recipe.name!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    fontSize: 30
+                                ),
                               ),
                             ),
-                          ),
-                          CarouselSlider(
-                              items: images,
-                              options: CarouselOptions(
-                                aspectRatio: 16/9,
-                                viewportFraction: 0.8,
-                                initialPage: 0,
-                                enableInfiniteScroll: true,
-                                reverse: false,
-                                autoPlay: false,
-                                enlargeCenterPage: true,
-                                enlargeFactor: 0.3,
-                                scrollDirection: Axis.horizontal,
-                              )
-                          ),
-                          Container(
-                            margin: const EdgeInsets.only(top: 10),
-                            child: Text(
-                              recipe.desc!,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                  fontSize: 18
-                              ),
+                            CarouselSlider(
+                                items: images,
+                                options: CarouselOptions(
+                                  aspectRatio: 16/9,
+                                  viewportFraction: 0.8,
+                                  initialPage: 0,
+                                  enableInfiniteScroll: false,
+                                  reverse: false,
+                                  autoPlay: false,
+                                  enlargeCenterPage: true,
+                                  enlargeFactor: 0.3,
+                                  scrollDirection: Axis.horizontal,
+                                )
                             ),
-                          ),
-                          Container(
-                            margin: const EdgeInsets.only(top: 20.0, bottom: 10.0),
-                            child: const Divider(),
-                          ),
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            child: const Text(
-                              "Zutaten:",
-                              style: TextStyle(
-                                  fontSize: 24
-                              ),
-                            ),
-                          ),
-                          ListView.builder(
-                            physics: const NeverScrollableScrollPhysics(),
-                            shrinkWrap: true,
-                            itemCount: recipe.ingredients != null ? recipe.ingredients!.length : 0,
-                            itemBuilder: (context, index) {
-                              return Text(
-                                "${recipe.ingredients![index].count} "
-                                    "${recipe.ingredients![index].unit!} "
-                                    "${recipe.ingredients![index].name}",
+                            Container(
+                              margin: const EdgeInsets.only(top: 10),
+                              child: Text(
+                                recipe.desc!,
+                                textAlign: TextAlign.center,
                                 style: const TextStyle(
                                     fontSize: 18
                                 ),
-                              );
-                            },
-                          ),
-                          Container(
-                            margin: const EdgeInsets.only(top: 20.0, bottom: 10.0),
-                            child: const Divider(),
-                          ),
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            child: const Text(
-                              "Schritte:",
-                              style: TextStyle(
-                                  fontSize: 24
                               ),
                             ),
-                          ),
-                          ListView.builder(
-                            physics: const NeverScrollableScrollPhysics(),
-                            shrinkWrap: true,
-                            itemCount: recipe.steps != null ? recipe.steps!.length : 0,
-                            itemBuilder: (context, index) {
-                              return Text(
-                                "${index + 1}. ${recipe.steps![index].desc}",
-                                style: const TextStyle(
-                                    fontSize: 18
+                            Container(
+                              margin: const EdgeInsets.only(top: 20.0, bottom: 10.0),
+                              child: const Divider(),
+                            ),
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              child: const Text(
+                                "Zutaten:",
+                                style: TextStyle(
+                                    fontSize: 24
                                 ),
-                              );
-                            },
-                          ),
-                        ],
+                              ),
+                            ),
+                            ListView.builder(
+                              physics: const NeverScrollableScrollPhysics(),
+                              shrinkWrap: true,
+                              itemCount: recipe.ingredients != null ? recipe.ingredients!.length : 0,
+                              itemBuilder: (context, index) {
+                                return Text(
+                                  "${recipe.ingredients![index].count} "
+                                      "${recipe.ingredients![index].unit!} "
+                                      "${recipe.ingredients![index].name}",
+                                  style: const TextStyle(
+                                      fontSize: 18
+                                  ),
+                                );
+                              },
+                            ),
+                            Container(
+                              margin: const EdgeInsets.only(top: 20.0, bottom: 10.0),
+                              child: const Divider(),
+                            ),
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              child: const Text(
+                                "Schritte:",
+                                style: TextStyle(
+                                    fontSize: 24
+                                ),
+                              ),
+                            ),
+                            ListView.builder(
+                              physics: const NeverScrollableScrollPhysics(),
+                              shrinkWrap: true,
+                              itemCount: recipe.steps != null ? recipe.steps!.length : 0,
+                              itemBuilder: (context, index) {
+                                return Text(
+                                  "${index + 1}. ${recipe.steps![index].desc}",
+                                  style: const TextStyle(
+                                      fontSize: 18
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                )
-            ),
-            Visibility(
-              visible: _showExtendedFabs,
-              child: GestureDetector(
-                onTap: () => setState(() => _showExtendedFabs = !_showExtendedFabs),
-                child: Container(
-                  color: Colors.black.withOpacity(0.8),
-                  width: double.infinity,
-                  height: double.infinity,
+                    ],
+                  )
+              ),
+              Visibility(
+                visible: _showExtendedFabs,
+                child: GestureDetector(
+                  onTap: () => setState(() => _showExtendedFabs = !_showExtendedFabs),
+                  child: Container(
+                    color: Colors.black.withOpacity(0.8),
+                    width: double.infinity,
+                    height: double.infinity,
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-        floatingActionButton: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Visibility(
-              visible: _showExtendedFabs,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: FloatingActionButton(
+            ],
+          ),
+          floatingActionButton: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Visibility(
+                visible: _showExtendedFabs,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: FloatingActionButton(
+                        heroTag: "btn2",
+                        mini: true,
+                        onPressed: () {
+                          _deleteRecipe(recipe);
+                        },
+                        child: LineIcon.alternateTrash(),
+                      ),
+                    ),
+                    FloatingActionButton(
+                      heroTag: "btn3",
                       mini: true,
                       onPressed: () {
-                        _deleteRecipe(recipe);
+                        _favorRecipe(recipe);
                       },
-                      child: LineIcon.alternateTrash(),
+                      child: _isRecipeFavourite(recipe)
+                          ? LineIcon.starAlt()
+                          : LineIcon.star(),
                     ),
-                  ),
-                  FloatingActionButton(
-                    mini: true,
-                    onPressed: () {
-                      _favorRecipe(recipe);
-                    },
-                    child: _isRecipeFavourite(recipe)
-                        ? LineIcon.starAlt()
-                        : LineIcon.star(),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 10),
-                    child: FloatingActionButton(
-                      onPressed: () {
-                        Navigator.of(context).push(PageRouteBuilder(
-                            opaque: false,
-                            pageBuilder: (BuildContext context, _, __) =>
-                                EditRecipePage(recipe: recipe)
-                        ));
-                      },
-                      child: LineIcon.pen(),
-                    ),
-                  )
-                ],
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: FloatingActionButton(
+                        heroTag: "btn4",
+                        onPressed: () {
+                          Navigator.of(context).push(PageRouteBuilder(
+                              opaque: false,
+                              pageBuilder: (BuildContext context, _, __) =>
+                                  EditRecipePage(recipe: recipe)
+                          ));
+                        },
+                        child: LineIcon.pen(),
+                      ),
+                    )
+                  ],
+                ),
               ),
-            ),
-            Visibility(
-              visible: !_showExtendedFabs,
-              child: FloatingActionButton(
-                onPressed: () {
-                  setState(() {
-                    _showExtendedFabs = !_showExtendedFabs;
-                  });
-                },
-                child: LineIcon.cog(),
-              ),
-            )
-          ],
-        )/*FloatingActionButton(
+              Visibility(
+                visible: !_showExtendedFabs,
+                child: FloatingActionButton(
+                  heroTag: "btn1",
+                  onPressed: () {
+                    setState(() {
+                      _showExtendedFabs = !_showExtendedFabs;
+                    });
+                  },
+                  child: LineIcon.cog(),
+                ),
+              )
+            ],
+          )/*FloatingActionButton(
           onPressed: () {
             Navigator.of(context).push(PageRouteBuilder(
                 opaque: false,
@@ -326,6 +355,8 @@ class _ViewRecipePageState extends State<ViewRecipePage> {
           onPressed: () => _favouriteRecipe(recipe),
           child: _isRecipeFavourite(recipe) ? LineIcon.starAlt() : LineIcon.star(),
         )*/,
+        );
+      }
     );
   }
 }

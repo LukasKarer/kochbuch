@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:ffi';
+import 'dart:core';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -9,14 +9,15 @@ import 'package:kochbuch/material/activies/new_recipe.dart';
 import 'package:kochbuch/material/activies/view_recipe.dart';
 import 'package:line_icons/line_icon.dart';
 import 'package:line_icons/line_icons.dart';
-import 'package:kochbuch/material/activies/home.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:path_provider_android/path_provider_android.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../img/img.dart';
 
 class MaterialHomePage extends StatefulWidget {
-  const MaterialHomePage({super.key, required this.pageIndex});
+  const MaterialHomePage({super.key, required this.pageIndex, required this.reload});
 
   // This widget is the home page of your application. It is stateful, meaning
   // that it has a State object (defined below) that contains fields that affect
@@ -28,6 +29,7 @@ class MaterialHomePage extends StatefulWidget {
   // always marked "final".
 
   final int pageIndex;
+  final bool reload;
 
   @override
   State<MaterialHomePage> createState() => _MaterialHomePageState();
@@ -35,7 +37,9 @@ class MaterialHomePage extends StatefulWidget {
 
 class _MaterialHomePageState extends State<MaterialHomePage> {
   int currentPageIndex = 0;
-  late Future<List<Recipe>> recipes;
+  List<Recipe> recipes = [];
+  List<Uint8List?> images = [];
+  final client = Supabase.instance.client;
 
   void _newRecipe() {
     Navigator.of(context).push(
@@ -44,37 +48,89 @@ class _MaterialHomePageState extends State<MaterialHomePage> {
             pageBuilder: (BuildContext context, _, __) => const NewRecipePage()
         )
     );
-    build(context);
+    //build(context);
   }
 
-  Future<List<Recipe>> getRecipes() async {
-    final prefs = await SharedPreferences.getInstance();
-    List<String>? strings = prefs.getStringList('recipes');
-    List<Recipe> cache = [];
+  _getRecipes() async {
+    final user = client.auth.currentUser;
+    final strings = await client.from('recipes').select('recipe');
 
     if (strings != null) {
-      int i = 0;
-      while (i <strings.length) {
-        cache.add(Recipe.fromJson(jsonDecode(strings[i])));
-        i++;
+      for (int i = 0; i < strings.length; i++) {
+        Recipe recipe = Recipe.fromJson(
+            jsonDecode(strings[i]['recipe'])
+        );
+        try {
+          Uint8List image = await client.storage
+              .from('images/${user!.id}/${recipe.id}')
+              .download('${recipe.name}0.jpg');
+          setState(() {
+            recipes.add(recipe);
+            images.add(image);
+          });
+        } on Exception catch (e) {
+          setState(() {
+            recipes.add(recipe);
+            images.add(null);
+          });
+        }
       }
     }
-    return cache;
+    if (widget.reload) {
+      Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+              opaque: false,
+              pageBuilder: (BuildContext context, _, __) =>
+              const MaterialHomePage(pageIndex: 0, reload: false)
+          ));
+    }
   }
 
   @override
   void initState() {
     super.initState();
+    currentPageIndex = widget.pageIndex;
+    _getRecipes();
   }
 
   @override
   Widget build(BuildContext context) {
-    //currentPageIndex = widget.pageIndex;
     return Scaffold(
       appBar: AppBar(
         title: currentPageIndex == 0
             ? const Text("Mein Kochbuch")
             : const Text("Meine Favouriten")
+      ),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: <Widget>[
+            const DrawerHeader(
+              child: Text("Mein Kochbuch"),
+              /*decoration: BoxDecoration(
+                color: Colors.blue,
+              ),*/
+            ),
+            ListTile(
+              leading: LineIcon.fileImport(),
+              title: const Text('Importieren'),
+              onTap: () {
+                // navigate to home screen
+              },
+            ),
+            ListTile(
+              leading: LineIcon.fileExport(),
+              title: const Text('Exportieren'),
+              onTap: () async {
+                /*List<Recipe> recipes = await getRecipes();
+                final dic = await getExternalStorageDirectory();
+                File file = File('${dic!.path}/recipes.json');
+                file.writeAsString(jsonEncode(recipes));
+                print(jsonEncode(recipes));*/
+              },
+            ),
+          ],
+        ),
       ),
       bottomNavigationBar: NavigationBar(
         onDestinationSelected: (int index) {
@@ -95,61 +151,105 @@ class _MaterialHomePageState extends State<MaterialHomePage> {
         ],
       ),
       body: <Widget>[
-        FutureBuilder(
-          future: getRecipes(),
-          builder: (context, snapshot) {
-            return Container(
-                alignment: Alignment.center,
-                child: GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                  ),
-                  itemCount: snapshot.data != null ? snapshot.data?.length  : 0,
-                  itemBuilder: (context, index) {
-                    return Card(
-                        clipBehavior: Clip.antiAliasWithSaveLayer,
-                        child: InkWell(
-                          child: Column(
-                            children: <Widget>[
-                              AspectRatio(
-                                aspectRatio: 16 / 9,
-                                child: Image.memory(
-                                  snapshot.data?[index].images?.length != 0
-                                      ? base64Decode(snapshot.data![index].images![0])
-                                      : base64Decode(MyImage.image),
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                              Container(
-                                margin: const EdgeInsets.all(5),
-                                child: Center(
-                                  child: Text(snapshot.data![index].name!,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 3,
-                                  ),
-                                ),
-                              )
-                            ],
+        Container(
+            alignment: Alignment.center,
+            child: GridView.builder(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+              ),
+              itemCount: recipes.length,
+              itemBuilder: (context, index) {
+                return Card(
+                    clipBehavior: Clip.antiAliasWithSaveLayer,
+                    child: InkWell(
+                      child: Column(
+                        children: <Widget>[
+                          AspectRatio(
+                            aspectRatio: 16 / 9,
+                            child: Image.memory(
+                              images[index] != null ?
+                                images[index]! : base64Decode(MyImage.image),
+                              fit: BoxFit.cover,
+                            ),
                           ),
-                          onTap: () {
-                            Navigator.of(context).push(PageRouteBuilder(
-                                opaque: false,
-                                pageBuilder: (BuildContext context, _, __) =>
-                                    ViewRecipePage(recipe: snapshot.data![index])
-                            ));
-                          },
-                        )
-                    );
-                  },
-                )
-            );
-          }
+                          Container(
+                            margin: const EdgeInsets.all(5),
+                            child: Center(
+                              child: Text(recipes[index].name!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 3,
+                              ),
+                            ),
+                          )
+                        ],
+                      ),
+                      onTap: () {
+                        Navigator.of(context).push(PageRouteBuilder(
+                            opaque: false,
+                            pageBuilder: (BuildContext context, _, __) =>
+                                ViewRecipePage(recipe: recipes[index])
+                        ));
+                      },
+                    )
+                );
+              },
+            )
         ),
-        FutureBuilder(
+        Container(
+            alignment: Alignment.center,
+            child: GridView.builder(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+              ),
+              itemCount: recipes.length,
+              itemBuilder: (context, index) {
+                if (recipes[index].favourite == false) return const SizedBox();
+
+                return Card(
+                    clipBehavior: Clip.antiAliasWithSaveLayer,
+                    child: InkWell(
+                      child: Column(
+                        children: <Widget>[
+                          AspectRatio(
+                            aspectRatio: 16 / 9,
+                            child: Image.memory(
+                              images[index] != null ?
+                              images[index]! : base64Decode(MyImage.image),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          Container(
+                            margin: const EdgeInsets.all(5),
+                            child: Center(
+                              child: Text(recipes[index].name!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 3,
+                              ),
+                            ),
+                          )
+                        ],
+                      ),
+                      onTap: () {
+                        Navigator.of(context).push(PageRouteBuilder(
+                            opaque: false,
+                            pageBuilder: (BuildContext context, _, __) =>
+                                ViewRecipePage(recipe: recipes[index])
+                        ));
+                      },
+                    )
+                );
+              },
+            )
+        ),
+        /*FutureBuilder(
           future: getRecipes(),
           builder: (context, snapshot) {
             return Container(
@@ -170,8 +270,9 @@ class _MaterialHomePageState extends State<MaterialHomePage> {
                               AspectRatio(
                                 aspectRatio: 16 / 9,
                                 child: Image.memory(
-                                  snapshot.data?[index].images?.length != 0
-                                      ? base64Decode(snapshot.data![index].images![0])
+                                  snapshot.data?[index].images! != 0
+                                      ? images[index]
+                                  //base64Decode(snapshot.data![index].images![0])
                                       : base64Decode(MyImage.image),
                                   fit: BoxFit.cover,
                                 ),
@@ -204,9 +305,10 @@ class _MaterialHomePageState extends State<MaterialHomePage> {
                 )
             );
           }
-        ),
+        ),*/
       ][currentPageIndex],
       floatingActionButton: currentPageIndex == 0 ? FloatingActionButton.extended(
+        heroTag: "btn1",
         onPressed: _newRecipe,
         icon: const Icon(Icons.add),
         label: const Text("Neues Rezept"),

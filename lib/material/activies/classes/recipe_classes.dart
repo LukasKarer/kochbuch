@@ -1,27 +1,30 @@
 class Recipe {
   String? name;
-  List<String>? images;
+  String? id;
   int? persons;
   bool? favourite;
   String? desc;
+  int? images;
   List<Ingredient>? ingredients;
   List<RecipeStep>? steps;
 
   Recipe(
       {this.name,
-        this.images,
+        this.id,
         this.persons,
         this.favourite,
         this.desc,
+        this.images,
         this.ingredients,
         this.steps});
 
   Recipe.fromJson(Map<String, dynamic> json) {
     name = json['name'];
-    images = json['images'].cast<String>();
+    id = json['id'];
     persons = json['persons'];
     favourite = json['favourite'];
     desc = json['desc'];
+    images = json['images'];
     if (json['ingredients'] != null) {
       ingredients = <Ingredient>[];
       json['ingredients'].forEach((v) {
@@ -39,10 +42,11 @@ class Recipe {
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = new Map<String, dynamic>();
     data['name'] = this.name;
-    data['images'] = this.images;
+    data['id'] = this.id;
     data['persons'] = this.persons;
     data['favourite'] = this.favourite;
     data['desc'] = this.desc;
+    data['images'] = this.images;
     if (this.ingredients != null) {
       data['ingredients'] = this.ingredients!.map((v) => v.toJson()).toList();
     }

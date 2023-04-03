@@ -1,14 +1,10 @@
 {
   "name": "ABC",
-  "images": 1,
+  "id": "da0f53cc-92f0-4ff1-9f62-553aaabb4657",
   "persons": 4,
   "favourite": false,
   "desc": "abcdeopjnFUWIERFPWJEGFHNOPICEIHWRPUGTIHWQRIEGT",
-  "images": [
-    "abc",
-    "abcd",
-    "abcde"
-  ],
+  "images": 1,
   "ingredients": [
     {
       "count": 9999,

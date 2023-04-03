@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'classes/recipe_classes.dart';
 
@@ -40,16 +41,24 @@ class _EditRecipePageState extends State<EditRecipePage> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _personsController = TextEditingController();
   final TextEditingController _descController = TextEditingController();
-  final _dropdownValues = ['Gramm', 'Stück', 'Esslöffel', 'Teelöffel'];
+  final _dropdownValues = ['Gramm', 'Stück', 'Esslöffel', 'Teelöffel', 'Milliliter'];
   final _selectedValues = [];
+  final client = Supabase.instance.client;
+  bool saveButtonDisabled = true;
 
-  bool _loadRecipe(Recipe recipe) {
+  _loadRecipe(Recipe recipe) async {
     _nameController.text = recipe.name!;
     _personsController.text = recipe.persons!.toString();
     _descController.text = recipe.desc!;
+    final user = client.auth.currentUser;
 
-    for (int i = 0; i < recipe.images!.length; i++) {
-      images.add(base64Decode(recipe.images![i]));
+    for (int i = 0; i < recipe.images!; i++) {
+      final result = await client.storage
+          .from('images/${user!.id}/${recipe.id}')
+          .download('${recipe.name}$i.jpg');
+      setState(() {
+        images.add(result);
+      });
     }
     for (int i = 0; i < recipe.ingredients!.length; i++) {
       _ingredientsCountControllers.add(TextEditingController(text: recipe.ingredients![i].count.toString()));
@@ -59,20 +68,20 @@ class _EditRecipePageState extends State<EditRecipePage> {
     for (int i = 0; i < recipe.steps!.length; i++) {
       _stepControllers.add(TextEditingController(text: recipe.steps![i].desc!));
     }
+    saveButtonDisabled = false;
     return true;
   }
 
   Future<bool> _saveRecipe() async {
-    List<String> recipes = [];
-    List<String>? oldRecipes = [];
-    List<String> imageStrings = [];
     List<Ingredient> ingredients = [];
     List<RecipeStep> steps = [];
-    final prefs = await SharedPreferences.getInstance();
+    final user = client.auth.currentUser;
 
     try {
       for (int i = 0; i < _ingredientsCountControllers.length; i++) {
-        if (_ingredientsCountControllers[i].text.isNotEmpty) {
+        if (_ingredientsCountControllers[i].text.isNotEmpty
+            && _selectedValues[i] != ''
+            && _ingredientsNameControllers[i].text.isNotEmpty) {
           ingredients.add(Ingredient(
               count: int.parse(_ingredientsCountControllers[i].text),
               unit: _selectedValues[i],
@@ -84,35 +93,57 @@ class _EditRecipePageState extends State<EditRecipePage> {
           steps.add(RecipeStep(position: i, desc: _stepControllers[i].text));
         }
       }
-      for (int i = 0; i < images.length; i++) {
-        imageStrings.add(base64.encode(images[i]).toString());
-      }
       recipe = Recipe(
           name: _nameController.text,
-          images: imageStrings,
+          id: widget.recipe.id,
+          images: images.length,
           favourite: false,
           persons: int.parse(_personsController.text),
           desc: _descController.text,
           ingredients: ingredients,
           steps: steps);
 
-      oldRecipes = prefs.getStringList('recipes');
-      if (oldRecipes != null) recipes.addAll(oldRecipes);
-      int oldIndex = recipes.indexOf(jsonEncode(widget.recipe.toJson()));
-      if (oldIndex != -1) {
-        recipes[oldIndex] = jsonEncode(recipe!.toJson());
-      }
+      final List<String> files = List<String>.generate(widget.recipe.images!,
+              (int index) => "${user!.id}/${recipe!.id}/${recipe!.name!}$index.jpg");
+      await client.storage.from('images').remove(
+          files
+      );
 
-      await prefs.setStringList('recipes', recipes);
-    } on Exception {
+      final tempDir = await getTemporaryDirectory();
+      for (int i = 0; i < images.length; i++) {
+        final result = await client.storage
+            .from('images')
+            .upload('${user!.id}/${recipe!.id}/${_nameController.text}$i.jpg',
+            await File('${tempDir.path}/${_nameController.text}$i.jpg').writeAsBytes(images[i]),
+            fileOptions: const FileOptions(upsert: true)
+        );
+        //final imageUrl = result.data!.url;
+        print(result);
+      }
+      /*await client.from('recipes').delete().match({
+        'recipe': jsonEncode(widget.recipe.toJson()),
+        'user_id': user!.id
+      });*/
+
+      final updateResult = await client.from('recipes').update({
+        'recipe': jsonEncode(recipe!.toJson()),
+        'user_id': user!.id
+      }).eq("recipe", jsonEncode(widget.recipe.toJson())).select();
+    } on Exception catch (e) {
+      print(e);
       return false;
     }
     return true;
   }
 
   @override
-  Widget build(BuildContext context) {
+  void initState() {
     _loadRecipe(widget.recipe);
+    super.initState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -120,16 +151,25 @@ class _EditRecipePageState extends State<EditRecipePage> {
           actions: [
             TextButton(
               onPressed: () async {
-                if (await _saveRecipe()) {
-                  Navigator.of(context).popUntil((route) => route.isFirst == true);
-                  Navigator.of(context).push(PageRouteBuilder(
-                      opaque: false,
-                      pageBuilder: (BuildContext context, _, __) =>
-                          ViewRecipePage(recipe: recipe!)
-                  ));
+                if (!saveButtonDisabled) {
+                  if (await _saveRecipe()) {
+                    Navigator.of(context).popUntil((route) => route.isFirst == true);
+                    Navigator.of(context).pushReplacement(
+                        PageRouteBuilder(
+                            opaque: false,
+                            pageBuilder: (BuildContext context, _, __) =>
+                            const MaterialHomePage(pageIndex: 0, reload: false)
+                        ));
+                    /*Navigator.of(context).push(PageRouteBuilder(
+                        opaque: false,
+                        pageBuilder: (BuildContext context, _, __) =>
+                            ViewRecipePage(recipe: recipe!)
+                    ));*/
+                  }
                 }
               },
               child: const Text('Speichern'),
+
             )
           ],
         ),
@@ -144,30 +184,42 @@ class _EditRecipePageState extends State<EditRecipePage> {
                         margin: const EdgeInsets.only(left: 20.0, right: 20.0),
                         child: Column(
                           children: [
-                            TextFormField(
-                              controller: _nameController,
-                              decoration: const InputDecoration(
-                                labelText: 'Name',
-                                hintText: '',
+                            Padding(
+                              padding: const EdgeInsets.only(top: 5),
+                              child: TextFormField(
+                                controller: _nameController,
+                                decoration: const InputDecoration(
+                                  border: OutlineInputBorder(),
+                                  labelText: 'Name',
+                                  hintText: '',
+                                ),
                               ),
                             ),
-                            TextFormField(
-                              controller: _personsController,
-                              keyboardType: TextInputType.number,
-                              inputFormatters: <TextInputFormatter>[
-                                FilteringTextInputFormatter.digitsOnly,
-                              ],
-                              decoration: const InputDecoration(
-                                labelText: 'Anzahl der Personen',
-                                hintText: '',
+                            Padding(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: TextFormField(
+                                controller: _personsController,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: <TextInputFormatter>[
+                                  FilteringTextInputFormatter.digitsOnly,
+                                ],
+                                decoration: const InputDecoration(
+                                  border: OutlineInputBorder(),
+                                  labelText: 'Anzahl der Personen',
+                                  hintText: '',
+                                ),
                               ),
                             ),
-                            TextFormField(
-                              controller: _descController,
-                              maxLines: 4,
-                              decoration: const InputDecoration(
-                                labelText: 'Beschreibung',
-                                hintText: '',
+                            Padding(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: TextFormField(
+                                controller: _descController,
+                                maxLines: 4,
+                                decoration: const InputDecoration(
+                                  border: OutlineInputBorder(),
+                                  labelText: 'Beschreibung',
+                                  hintText: '',
+                                ),
                               ),
                             ),
                             Container(
@@ -193,7 +245,7 @@ class _EditRecipePageState extends State<EditRecipePage> {
                                   return Container(
                                     margin: const EdgeInsets.all(10),
                                     child: Image.memory(
-                                       images[index],
+                                      images[index],
                                       //height: 300,
                                     ),
                                   );
@@ -233,79 +285,92 @@ class _EditRecipePageState extends State<EditRecipePage> {
                               margin: const EdgeInsets.only(top: 20.0, bottom: 10.0),
                               child: const Divider(),
                             ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                const Text(
-                                  "Zutaten",
-                                  style: TextStyle(
-                                    fontSize: 20,
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 5),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  const Text(
+                                    "Zutaten",
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                    ),
                                   ),
-                                ),
-                                OutlinedButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _ingredientsCountControllers.add(TextEditingController());
-                                      _selectedValues.add('Gramm');
-                                      _ingredientsNameControllers.add(TextEditingController());
-                                    });
-                                  },
-                                  child: const Text('Neue Zutat'),
-                                ),
-                              ],
+                                  OutlinedButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _ingredientsCountControllers.add(TextEditingController());
+                                        _selectedValues.add("Gramm");
+                                        _ingredientsNameControllers.add(TextEditingController());
+                                      });
+                                    },
+                                    child: const Text('Neue Zutat'),
+                                  ),
+                                ],
+                              ),
                             ),
                             ListView.builder(
                               physics: const NeverScrollableScrollPhysics(),
                               shrinkWrap: true,
                               itemCount: _ingredientsCountControllers.length,
                               itemBuilder: (context, index) {
-                                return Row(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Expanded(
-                                      flex: 1,
-                                      child: TextField(
-                                        controller: _ingredientsCountControllers[index],
-                                        keyboardType: TextInputType.number,
-                                        inputFormatters: <TextInputFormatter>[
-                                          FilteringTextInputFormatter.digitsOnly,
-                                        ],
-                                        decoration: const InputDecoration(
-                                          labelText: 'Menge',
-                                          hintText: '',
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 10),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Expanded(
+                                        flex: 2,
+                                        child: TextField(
+                                          controller: _ingredientsCountControllers[index],
+                                          keyboardType: TextInputType.number,
+                                          inputFormatters: <TextInputFormatter>[
+                                            FilteringTextInputFormatter.digitsOnly,
+                                          ],
+                                          decoration: const InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            labelText: 'Menge',
+                                            hintText: '',
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 5.0),
-                                    Expanded(
-                                      flex: 2,
-                                      child: DropdownButton(
-                                        hint: const Text('Einheit'),
-                                        value: _selectedValues[index],
-                                        onChanged: (newValue) {
-                                          setState(() {
-                                            _selectedValues[index] = newValue!;
-                                          });
-                                        },
-                                        items: _dropdownValues.map((item) => DropdownMenuItem(
-                                          value: item,
-                                          child: Text(item),
-                                        )).toList(),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 5.0),
-                                    Expanded(
-                                      flex: 3,
-                                      child: TextField(
-                                        controller: _ingredientsNameControllers[index],
-                                        decoration: const InputDecoration(
-                                          labelText: 'Name',
-                                          hintText: '',
+                                      const SizedBox(width: 5.0),
+                                      Expanded(
+                                        flex: 3,
+                                        child: DropdownButtonFormField(
+                                          decoration: const InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            labelText: 'Einheit',
+                                            hintText: '',
+                                          ),
+                                          hint: const Text('Einheit'),
+                                          value: _selectedValues[index],
+                                          onChanged: (newValue) {
+                                            setState(() {
+                                              _selectedValues[index] = newValue!;
+                                            });
+                                          },
+                                          items: _dropdownValues.map((item) => DropdownMenuItem(
+                                            value: item,
+                                            child: Text(item),
+                                          )).toList(),
                                         ),
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 5.0),
+                                      Expanded(
+                                        flex: 3,
+                                        child: TextField(
+                                          controller: _ingredientsNameControllers[index],
+                                          decoration: const InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            labelText: 'Zutat',
+                                            hintText: '',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 );
                               },
                             ),
@@ -313,37 +378,43 @@ class _EditRecipePageState extends State<EditRecipePage> {
                               margin: const EdgeInsets.only(top: 20.0, bottom: 10.0),
                               child: const Divider(),
                             ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                const Text(
-                                  "Schritte",
-                                  style: TextStyle(
-                                    fontSize: 20,
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 5),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  const Text(
+                                    "Schritte",
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                    ),
                                   ),
-                                ),
-                                OutlinedButton(
-                                  onPressed: () {
-                                    print("Tapped");
-                                    setState(() {
-                                      _stepControllers.add(TextEditingController());
-                                    });
-                                  },
-                                  child: const Text('Neuer Schritt'),
-                                ),
-                              ],
+                                  OutlinedButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _stepControllers.add(TextEditingController());
+                                      });
+                                    },
+                                    child: const Text('Neuer Schritt'),
+                                  ),
+                                ],
+                              ),
                             ),
                             ListView.builder(
                               physics: const NeverScrollableScrollPhysics(),
                               shrinkWrap: true,
                               itemCount: _stepControllers.length,
                               itemBuilder: (context, index) {
-                                return TextField(
-                                  controller: _stepControllers[index],
-                                  decoration: InputDecoration(
-                                    labelText: 'Schritt ${index + 1}',
-                                    hintText: '',
+                                return Padding(
+                                  padding:  const EdgeInsets.only(top: 10),
+                                  child: TextField(
+                                    controller: _stepControllers[index],
+                                    decoration: InputDecoration(
+                                      border: const OutlineInputBorder(),
+                                      labelText: 'Schritt ${index + 1}',
+                                      hintText: '',
+                                    ),
                                   ),
                                 );
                               },

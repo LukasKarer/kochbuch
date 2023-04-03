@@ -2,16 +2,29 @@ import 'dart:io';
 
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'cupertino/main_cupertino.dart';
 import 'material/main_material.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  await Supabase.initialize(
+    url: "https://mamausggsgxpogzksyxf.supabase.co",
+    anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hbWF1c2dnc2d4cG9nemtzeXhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE2Nzg2NTc1NTcsImV4cCI6MTk5NDIzMzU1N30.MzVJS3joALez96BvFIZp0jmq0O_GasKHgE_VsjYYwdk",
+  );
+  runApp(const App());
+  Supabase.instance.client.auth.signInWithPassword(
+      email: 'dersuchti2015@gmail.com',
+      password: '12345678'
+  );
+  /*final AuthResponse res = await Supabase.instance.client.auth.signUp(
+      email: 'dersuchti2015@gmail.com',
+      password: '12345678'
+  );*/
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class App extends StatelessWidget {
+  const App({super.key});
   static final _defaultLightColorScheme = ColorScheme.fromSwatch(primarySwatch: Colors.blue);
   static final _defaultDarkColorScheme = ColorScheme.fromSwatch(primarySwatch: Colors.blue, brightness: Brightness.dark);
 
@@ -30,7 +43,7 @@ class MyApp extends StatelessWidget {
           useMaterial3: true,
         ),
         themeMode: ThemeMode.system,
-        home: const MaterialHomePage(pageIndex: 0),
+        home: const MaterialHomePage(pageIndex: 0, reload: true),
       );
     });
   }
