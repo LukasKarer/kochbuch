@@ -1,4 +1,4 @@
-name: kochbuch
+name: Kochbuch
 description: A new Flutter project.
 
 # The following line prevents the package from being accidentally published to
@@ -43,6 +43,7 @@ dependencies:
   supabase_flutter: ^1.5.0
   uuid: ^3.0.7
   webview_flutter_android: ^3.4.3
+  flutter_launcher_icons: ^0.12.0
   flutter:
     sdk: flutter
 
@@ -62,6 +63,12 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^2.0.0
 
+flutter_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/ios_icon.png" # Provide icon for ios
+  adaptive_icon_background: "assets/launcher_icon/ic_launcher_adaptive_back.png"
+  adaptive_icon_foreground: "assets/launcher_icon/ic_launcher_adaptive_fore.png"
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
