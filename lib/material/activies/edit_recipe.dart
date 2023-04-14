@@ -3,16 +3,14 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:kochbuch/material/activies/view_recipe.dart';
-import 'package:kochbuch/material/main_material.dart';
 import 'package:line_icons/line_icon.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../main_material.dart';
 import 'classes/recipe_classes.dart';
 
 class EditRecipePage extends StatefulWidget {

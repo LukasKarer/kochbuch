@@ -1,7 +1,9 @@
 import 'dart:io';
 
+import 'package:Kochbuch/material/activies/login_screen.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'cupertino/main_cupertino.dart';
@@ -13,14 +15,6 @@ void main() async {
     anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hbWF1c2dnc2d4cG9nemtzeXhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE2Nzg2NTc1NTcsImV4cCI6MTk5NDIzMzU1N30.MzVJS3joALez96BvFIZp0jmq0O_GasKHgE_VsjYYwdk",
   );
   runApp(const App());
-  Supabase.instance.client.auth.signInWithPassword(
-      email: 'dersuchti2015@gmail.com',
-      password: '12345678'
-  );
-  /*final AuthResponse res = await Supabase.instance.client.auth.signUp(
-      email: 'dersuchti2015@gmail.com',
-      password: '12345678'
-  );*/
 }
 
 class App extends StatelessWidget {
@@ -33,7 +27,6 @@ class App extends StatelessWidget {
   Widget build(BuildContext context) {
     return DynamicColorBuilder(builder: (lightColorScheme, darkColorScheme) {
       return MaterialApp(
-        title: 'Flutter Demo',
         theme: ThemeData(
           colorScheme: lightColorScheme ?? _defaultLightColorScheme,
           useMaterial3: true,

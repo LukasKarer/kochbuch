@@ -2,19 +2,20 @@ import 'dart:convert';
 import 'dart:core';
 import 'dart:io';
 
+import 'package:Kochbuch/material/activies/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:kochbuch/material/activies/classes/recipe_classes.dart';
-import 'package:kochbuch/material/activies/new_recipe.dart';
-import 'package:kochbuch/material/activies/view_recipe.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:line_icons/line_icon.dart';
 import 'package:line_icons/line_icons.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path_provider_android/path_provider_android.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../img/img.dart';
+import 'activies/classes/recipe_classes.dart';
+import 'activies/new_recipe.dart';
+import 'activies/view_recipe.dart';
 
 class MaterialHomePage extends StatefulWidget {
   const MaterialHomePage({super.key, required this.pageIndex, required this.reload});
@@ -51,7 +52,45 @@ class _MaterialHomePageState extends State<MaterialHomePage> {
     //build(context);
   }
 
+  Future<bool> _hasCreds() async  {
+    var storage = const FlutterSecureStorage(aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ));
+    String? mail = await storage.read(key: "mail");
+    String? pass = await storage.read(key: "pass");
+
+    try {
+      if (mail == null || pass == null) {
+        return false;
+      }
+      await Supabase.instance.client.auth.signInWithPassword(
+          email: mail,
+          password: pass
+      );
+      return true;
+    } on Exception catch (e) {
+      return false;
+    }
+  }
+
   _getRecipes() async {
+    if (widget.reload) {
+      if (!await _hasCreds()) {
+        Navigator.of(context).pushReplacement(
+            PageRouteBuilder(
+                opaque: false,
+                pageBuilder: (BuildContext context, _, __) => const LoginScreen()
+            ));
+      } else {
+        Navigator.of(context).pushReplacement(
+            PageRouteBuilder(
+                opaque: false,
+                pageBuilder: (BuildContext context, _, __) => const MaterialHomePage(pageIndex: 0, reload: false)
+            ));
+      }
+      return;
+    }
+
     final user = client.auth.currentUser;
     final strings = await client.from('recipes').select('recipe');
 
@@ -75,14 +114,6 @@ class _MaterialHomePageState extends State<MaterialHomePage> {
           });
         }
       }
-    }
-    if (widget.reload) {
-      Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-              opaque: false,
-              pageBuilder: (BuildContext context, _, __) =>
-              const MaterialHomePage(pageIndex: 0, reload: false)
-          ));
     }
   }
 
@@ -127,6 +158,25 @@ class _MaterialHomePageState extends State<MaterialHomePage> {
                 File file = File('${dic!.path}/recipes.json');
                 file.writeAsString(jsonEncode(recipes));
                 print(jsonEncode(recipes));*/
+              },
+            ),
+            ListTile(
+              leading: LineIcon.fileExport(),
+              title: const Text('Logout'),
+              onTap: () async {
+                var storage = const FlutterSecureStorage(aOptions: AndroidOptions(
+                  encryptedSharedPreferences: true,
+                ));
+
+                await Supabase.instance.client.auth.signOut();
+                await storage.delete(key: "mail");
+                await storage.delete(key: "pass");
+
+                Navigator.of(context).pushReplacement(
+                    PageRouteBuilder(
+                        opaque: false,
+                        pageBuilder: (BuildContext context, _, __) => const LoginScreen()
+                    ));
               },
             ),
           ],

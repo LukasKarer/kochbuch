@@ -3,9 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:kochbuch/material/main_material.dart';
 import 'package:line_icons/line_icon.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+//import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:image_picker/image_picker.dart';
@@ -13,6 +12,7 @@ import 'package:image/image.dart' as img;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../main_material.dart';
 import 'classes/recipe_classes.dart';
 
 class NewRecipePage extends StatefulWidget {
@@ -49,7 +49,7 @@ class _NewRecipePageState extends State<NewRecipePage> {
     List<String>? oldRecipes = [];
     List<Ingredient> ingredients = [];
     List<RecipeStep> steps = [];
-    final prefs = await SharedPreferences.getInstance();
+    //final prefs = await SharedPreferences.getInstance();
     final client = Supabase.instance.client;
     final user = client.auth.currentUser;
 
